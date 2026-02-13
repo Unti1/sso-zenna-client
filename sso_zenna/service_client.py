@@ -1,0 +1,197 @@
+"""Клиент для микросервисного взаимодействия (Client Credentials)"""
+
+import base64
+import json
+from typing import Any, Dict, Optional
+
+from .base import BaseClient
+from .models import TokenResponse, UserInfo
+from .exceptions import TokenError
+
+
+def _decode_jwt_payload(token: str) -> Dict[str, Any]:
+    """
+    Декодирует payload JWT без проверки подписи (только чтение полей).
+    Токен получен от SSO, используется для извлечения claim service_name.
+    """
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return {}
+        payload_b64 = parts[1]
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:
+            payload_b64 += "=" * padding
+        payload_bytes = base64.urlsafe_b64decode(payload_b64)
+        return json.loads(payload_bytes.decode("utf-8"))
+    except Exception:
+        return {}
+
+
+class ServiceClient(BaseClient):
+    """Клиент для микросервисного взаимодействия с Client Credentials Grant"""
+
+    def __init__(
+        self,
+        base_url: str,
+        client_id: str,
+        client_secret: str,
+        api_version: str = "v1",
+        timeout: int = 30,
+        session=None,
+        auto_refresh_token: bool = True,
+        default_scope: Optional[str] = None,
+    ):
+        """
+        Инициализация клиента для микросервисов
+
+        Args:
+            base_url: Базовый URL API
+            client_id: ID микросервиса
+            client_secret: Секрет микросервиса
+            api_version: Версия API
+            timeout: Таймаут запросов
+            session: Опциональная aiohttp сессия
+            auto_refresh_token: Автоматически обновлять токен при получении 401 ошибки
+            default_scope: Scope по умолчанию для автоматического получения токена
+        """
+        super().__init__(base_url, api_version, timeout, session, auto_refresh_token)
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self._access_token: Optional[str] = None
+        self.default_scope = default_scope
+
+    async def get_access_token(self, scope: Optional[str] = None) -> TokenResponse:
+        """
+        Получить access token используя Client Credentials Grant
+
+        Args:
+            scope: Запрашиваемые разрешения (разделенные пробелом)
+
+        Returns:
+            TokenResponse с access_token
+        """
+        form_data = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        }
+
+        if scope:
+            form_data["scope"] = scope
+
+        data = await self.post("token", form_data=form_data)
+        token_response = TokenResponse(**data)
+
+        # Сохраняем токен
+        self._access_token = token_response.access_token
+
+        return token_response
+
+    async def get_current_user(self, access_token: Optional[str] = None) -> UserInfo:
+        """
+        Получить информацию о текущем пользователе/сервисе
+
+        Args:
+            access_token: Access token (если не указан, используется сохраненный)
+
+        Returns:
+            UserInfo с информацией (для микросервисов может быть ограниченная информация)
+        """
+        access_token = access_token or self._access_token
+
+        if not access_token:
+            raise TokenError(
+                "Access token не найден. Вызовите get_access_token() сначала.")
+
+        data = await self.get("me", access_token=access_token)
+        return UserInfo(**data)
+
+    def set_access_token(self, access_token: str):
+        """
+        Установить access token вручную
+
+        Args:
+            access_token: Access token
+        """
+        self._access_token = access_token
+
+    def _get_access_token(self) -> Optional[str]:
+        """Получить текущий access token (для BaseClient)"""
+        return self._access_token
+
+    async def _refresh_token(self) -> None:
+        """Обновить access token (для авто-рефреша)"""
+        await self.get_access_token(self.default_scope)
+
+    def get_token(self) -> Optional[str]:
+        """Получить текущий access token"""
+        return self._access_token
+
+    def get_token_payload(self, access_token: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Получить payload текущего JWT токена (без проверки подписи).
+        Удобно для чтения полей, вшитых SSO (например service_name).
+
+        Args:
+            access_token: Токен (если не указан, используется сохранённый)
+
+        Returns:
+            Словарь с полями payload или пустой словарь при ошибке
+        """
+        token = access_token or self._access_token
+        if not token:
+            return {}
+        return _decode_jwt_payload(token)
+
+    def get_service_name(self, access_token: Optional[str] = None) -> Optional[str]:
+        """
+        Получить название сервиса из JWT токена (поле service_name, вшитое SSO).
+
+        Args:
+            access_token: Токен (если не указан, используется сохранённый)
+
+        Returns:
+            Название сервиса или None, если токена нет или поле отсутствует
+        """
+        payload = self.get_token_payload(access_token)
+        return payload.get("service_name")
+
+    async def request_with_auth(
+        self,
+        method: str,
+        endpoint: str,
+        json_data: Optional[dict] = None,
+        params: Optional[dict] = None,
+        auto_refresh: bool = True,
+    ) -> dict:
+        """
+        Выполнить запрос с автоматической авторизацией
+
+        Args:
+            method: HTTP метод (GET, POST, PUT, DELETE)
+            endpoint: API endpoint
+            json_data: JSON данные для тела запроса
+            params: Query параметры
+            auto_refresh: Автоматически получать токен, если его нет
+
+        Returns:
+            Распарсенный JSON ответ
+        """
+        access_token = self._access_token
+
+        if not access_token and auto_refresh:
+            await self.get_access_token()
+            access_token = self._access_token
+
+        if not access_token:
+            raise TokenError(
+                "Access token не найден. Вызовите get_access_token() сначала.")
+
+        return await self._request(
+            method=method,
+            endpoint=endpoint,
+            access_token=access_token,
+            json_data=json_data,
+            params=params,
+        )

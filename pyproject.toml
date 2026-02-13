@@ -1,0 +1,36 @@
+[project]
+name = "sso-zenna"
+version = "0.1.0"
+description = "Python клиент для взаимодействия с MS Auth Service API"
+authors = [
+    {name = "Артем Костюченко",email = "kostyuchenko.work@gmail.com"}
+]
+license = "LICENSE"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp (>=3.13.2,<4.0.0)",
+    "pydantic (>=2.12.5,<3.0.0)"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest (>=8.0.0)",
+    "pytest-asyncio (>=0.24.0)",
+    "python-dotenv (>=1.0.0)",
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.24.0"
+python-dotenv = ">=1.0.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
