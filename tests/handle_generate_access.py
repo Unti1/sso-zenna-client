@@ -2,19 +2,26 @@
 Ручной пример: полный цикл авторизации UserClient.
 Переменные берутся из tests/.env.test (скопируйте из .env.test.example и заполните).
 
-Запуск тестов клиентов и ручек /me, /services и т.д.:
-  pytest tests/ -v
+Запуск из корня sso-zenna-client:
+  python tests/handle_generate_access.py
+  или: poetry run python tests/handle_generate_access.py  (если пакет установлен через poetry install -e .)
 """
 
 import asyncio
+import os
+import sys
 from pathlib import Path
+
+# Чтобы при запуске "python tests/handle_generate_access.py" находился пакет sso_zenna
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env.test")
 
 from sso_zenna import UserClient
-import os
 
 
 def main():

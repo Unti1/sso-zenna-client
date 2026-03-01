@@ -277,6 +277,26 @@ class BaseClient(ABC):
             retry_on_401=use_auto_refresh,
         )
 
+    async def patch(
+        self,
+        endpoint: str,
+        access_token: Optional[str] = None,
+        json_data: Optional[Dict[str, Any]] = None,
+        form_data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        use_auto_refresh: bool = True,
+    ) -> Dict[str, Any]:
+        """Выполнить PATCH запрос"""
+        return await self._request(
+            "PATCH",
+            endpoint,
+            access_token=access_token,
+            json_data=json_data,
+            form_data=form_data,
+            params=params,
+            retry_on_401=use_auto_refresh,
+        )
+
     async def delete(
         self,
         endpoint: str,

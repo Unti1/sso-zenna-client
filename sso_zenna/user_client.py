@@ -13,6 +13,8 @@ from .models import (
     AuthorizeResponse,
     LoginResponse,
     ServicesList,
+    TelegramSessionResponse,
+    TelegramUserCreate,
 )
 from .exceptions import TokenError
 
@@ -72,7 +74,7 @@ class UserClient(BaseClient):
         Returns:
             PKCEParams с code_verifier, code_challenge и state
         """
-        data = await self.get("pkce-params")
+        data = await self.get("auth/pkce-params")
         self._pkce_params = PKCEParams(**data)
         return self._pkce_params
 
@@ -118,7 +120,7 @@ class UserClient(BaseClient):
         if scope:
             params["scope"] = scope
 
-        data = await self.get("authorize", params=params)
+        data = await self.get("auth/authorize", params=params)
         return AuthorizeResponse(**data)
 
     async def login(
@@ -144,7 +146,7 @@ class UserClient(BaseClient):
             "password": password,
         }
 
-        data = await self.post("login", json_data=json_data)
+        data = await self.post("auth/login", json_data=json_data)
         return LoginResponse(**data)
 
     async def exchange_code_for_tokens(
@@ -182,7 +184,7 @@ class UserClient(BaseClient):
         if redirect_uri:
             form_data["redirect_uri"] = redirect_uri
 
-        data = await self.post("token", form_data=form_data)
+        data = await self.post("auth/token", form_data=form_data)
         token_response = TokenResponse(**data)
 
         # Сохраняем токены
@@ -213,7 +215,7 @@ class UserClient(BaseClient):
             "client_id": self.client_id,
         }
 
-        data = await self.post("token", form_data=form_data)
+        data = await self.post("auth/token", form_data=form_data)
         token_response = TokenResponse(**data)
 
         # Обновляем токены
@@ -238,7 +240,7 @@ class UserClient(BaseClient):
             raise TokenError(
                 "Access token не найден. Выполните авторизацию сначала.")
 
-        data = await self.get("me", access_token=access_token)
+        data = await self.get("auth/me", access_token=access_token)
         return UserInfo(**data)
 
     async def logout(self, refresh_token: Optional[str] = None) -> dict:
@@ -258,7 +260,7 @@ class UserClient(BaseClient):
 
         form_data = {"refresh_token": refresh_token}
 
-        data = await self.post("logout", form_data=form_data)
+        data = await self.post("auth/logout", form_data=form_data)
 
         # Очищаем токены
         self._access_token = None
@@ -274,7 +276,7 @@ class UserClient(BaseClient):
         Returns:
             ServicesList со списком активных микросервисов
         """
-        data = await self.get("services")
+        data = await self.get("auth/services")
         return ServicesList(**data)
 
     def _get_access_token(self) -> Optional[str]:

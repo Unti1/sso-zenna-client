@@ -5,7 +5,7 @@ import json
 from typing import Any, Dict, Optional
 
 from .base import BaseClient
-from .models import TokenResponse, UserInfo
+from .models import TokenResponse, UserInfo, ProfileInfo, TelegramSessionResponse
 from .exceptions import TokenError
 
 
@@ -80,7 +80,7 @@ class ServiceClient(BaseClient):
         if scope:
             form_data["scope"] = scope
 
-        data = await self.post("token", form_data=form_data)
+        data = await self.post("auth/token", form_data=form_data)
         token_response = TokenResponse(**data)
 
         # Сохраняем токен
@@ -104,7 +104,25 @@ class ServiceClient(BaseClient):
             raise TokenError(
                 "Access token не найден. Вызовите get_access_token() сначала.")
 
-        data = await self.get("me", access_token=access_token)
+        data = await self.get("auth/me", access_token=access_token)
+        return UserInfo(**data)
+
+    async def get_user_by_token(self, user_access_token: str) -> UserInfo:
+        """
+        Проверить пользовательский JWT через SSO: GET /auth/me с этим токеном.
+        Используется микросервисами для валидации входящего Bearer/cookie без хранения PEM.
+        SSO сам проверяет подпись и возвращает данные пользователя.
+
+        Args:
+            user_access_token: Токен пользователя (из Authorization или cookie)
+
+        Returns:
+            UserInfo с id, email, name и т.д.
+
+        Raises:
+            AuthenticationError: если токен невалиден или истёк
+        """
+        data = await self.get("auth/me", access_token=user_access_token)
         return UserInfo(**data)
 
     def set_access_token(self, access_token: str):
@@ -143,6 +161,21 @@ class ServiceClient(BaseClient):
         if not token:
             return {}
         return _decode_jwt_payload(token)
+
+    @staticmethod
+    def get_user_id_from_token(token: str) -> Optional[int]:
+        """
+        Извлечь id_user из JWT токена (без проверки подписи).
+        Для проверки подписи используйте публичный ключ SSO.
+        """
+        payload = _decode_jwt_payload(token)
+        user_id = payload.get("id_user") or payload.get("sub")
+        if user_id is not None:
+            try:
+                return int(user_id)
+            except (ValueError, TypeError):
+                pass
+        return None
 
     def get_service_name(self, access_token: Optional[str] = None) -> Optional[str]:
         """
@@ -195,3 +228,132 @@ class ServiceClient(BaseClient):
             json_data=json_data,
             params=params,
         )
+
+    # --- Методы для бота (users/telegram, profiles, auth/telegram-session). Требуют Bearer с client_id = BOT_CLIENT_ID в SSO. ---
+
+    async def _ensure_token(self) -> None:
+        """Получить access token при необходимости."""
+        if not self._access_token:
+            await self.get_access_token()
+
+    async def create_telegram_user(
+        self,
+        id: int,
+        tz: int = 3,
+        phone: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> Optional[UserInfo]:
+        """Создать или получить пользователя по Telegram ID (POST users/telegram)."""
+        await self._ensure_token()
+        payload = {"id": id, "tz": tz}
+        if phone is not None:
+            payload["phone"] = phone
+        if name is not None:
+            payload["name"] = name
+        try:
+            data = await self.post(
+                "users/telegram",
+                json_data=payload,
+                access_token=self._access_token,
+            )
+            return UserInfo(**data)
+        except Exception:
+            return None
+
+    async def create_telegram_session(self, user_id: int) -> Optional[TelegramSessionResponse]:
+        """Создать сессию для web-авторизации (POST auth/telegram-session). Возвращает session_token и auth_url."""
+        await self._ensure_token()
+        try:
+            data = await self.post(
+                "auth/telegram-session",
+                params={"user_id": user_id},
+                access_token=self._access_token,
+            )
+            return TelegramSessionResponse(**data)
+        except Exception:
+            return None
+
+    async def update_telegram_user(
+        self,
+        user_id: int,
+        *,
+        phone: Optional[str] = None,
+        name: Optional[str] = None,
+        last_seen: Optional[str] = None,
+    ) -> Optional[UserInfo]:
+        """Обновить telegram-пользователя (PATCH users/{user_id})."""
+        payload = {}
+        if phone is not None:
+            payload["phone"] = phone
+        if name is not None:
+            payload["name"] = name
+        if last_seen is not None:
+            payload["last_seen"] = last_seen
+        if not payload:
+            return None
+        await self._ensure_token()
+        try:
+            data = await self.patch(
+                f"users/{user_id}",
+                json_data=payload,
+                access_token=self._access_token,
+            )
+            return UserInfo(**data)
+        except Exception:
+            return None
+
+    async def get_profile(self, user_id: int) -> Optional[ProfileInfo]:
+        """Получить профиль по user_id — Telegram id (GET profiles/{user_id})."""
+        await self._ensure_token()
+        try:
+            data = await self.get(
+                f"profiles/{user_id}",
+                access_token=self._access_token,
+            )
+            return ProfileInfo(**data)
+        except Exception:
+            return None
+
+    async def update_profile(
+        self,
+        user_id: int,
+        *,
+        lang: Optional[str] = None,
+        name: Optional[str] = None,
+        notify_telegram: Optional[bool] = None,
+        notify_email: Optional[bool] = None,
+        about: Optional[str] = None,
+        age: Optional[str] = None,
+        weight: Optional[float] = None,
+        height: Optional[float] = None,
+    ) -> Optional[ProfileInfo]:
+        """Обновить профиль (PATCH profiles/{user_id}). Передавать только изменяемые поля."""
+        form_data = {}
+        if lang is not None:
+            form_data["lang"] = lang
+        if name is not None:
+            form_data["name"] = name
+        if notify_telegram is not None:
+            form_data["notify_telegram"] = "true" if notify_telegram else "false"
+        if notify_email is not None:
+            form_data["notify_email"] = "true" if notify_email else "false"
+        if about is not None:
+            form_data["about"] = about
+        if age is not None:
+            form_data["age"] = age
+        if weight is not None:
+            form_data["weight"] = str(weight)
+        if height is not None:
+            form_data["height"] = str(height)
+        if not form_data:
+            return await self.get_profile(user_id)
+        await self._ensure_token()
+        try:
+            data = await self.patch(
+                f"profiles/{user_id}",
+                form_data=form_data,
+                access_token=self._access_token,
+            )
+            return ProfileInfo(**data)
+        except Exception:
+            return None

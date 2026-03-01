@@ -1,13 +1,22 @@
 """
-SSO Zenna Client - Python клиент для взаимодействия с MS Auth Service API
+SSO Zenna Client - Python клиент для взаимодействия с zenna-sso API
 
-Этот пакет предоставляет удобные классы для работы с API аутентификации:
-- UserClient: для пользовательского взаимодействия (OAuth 2.0 с PKCE)
-- ServiceClient: для микросервисного взаимодействия (Client Credentials)
+- UserClient: OAuth 2.0 с PKCE (login/password, /me, refresh)
+- ServiceClient: Client Credentials для микросервисов (в т.ч. бот: users/telegram, profiles, auth/telegram-session)
+- verify_sso_jwt_and_get_user_id: проверка JWT (RS256) для микросервисов
 """
 
 from .user_client import UserClient
 from .service_client import ServiceClient
+from .jwt_verify import verify_sso_jwt_and_get_user_id
+from .models import (
+    UserInfo,
+    TokenResponse,
+    PKCEParams,
+    TelegramSessionResponse,
+    TelegramUserCreate,
+    ProfileInfo,
+)
 from .exceptions import (
     SSOClientError,
     AuthenticationError,
@@ -19,6 +28,13 @@ from .exceptions import (
 __all__ = [
     "UserClient",
     "ServiceClient",
+    "verify_sso_jwt_and_get_user_id",
+    "UserInfo",
+    "TokenResponse",
+    "PKCEParams",
+    "TelegramSessionResponse",
+    "TelegramUserCreate",
+    "ProfileInfo",
     "SSOClientError",
     "AuthenticationError",
     "AuthorizationError",

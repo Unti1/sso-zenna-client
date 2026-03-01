@@ -24,15 +24,54 @@ class TokenResponse(BaseModel):
 
 
 class UserInfo(BaseModel):
-    """Информация о пользователе"""
+    """Информация о пользователе (из /me, JWT или users/telegram)"""
 
     id: int = Field(..., description="ID пользователя")
-    email: str = Field(..., description="Email пользователя")
-    name: str = Field(..., description="Имя пользователя")
-    surname: str = Field(..., description="Фамилия пользователя")
+    email: str = Field("", description="Email пользователя (опционально для Telegram)")
+    name: str = Field("", description="Имя пользователя")
+    surname: str = Field("", description="Фамилия пользователя")
     lastname: Optional[str] = Field(None, description="Отчество пользователя")
     scopes: list[str] = Field(default_factory=list,
                               description="Список разрешений пользователя")
+    tz: Optional[int] = Field(None, description="Часовой пояс")
+    phone: Optional[str] = Field(None, description="Телефон")
+    status: Optional[str] = Field(None, description="Статус подписки")
+
+    model_config = {"extra": "ignore"}
+
+
+class TelegramSessionResponse(BaseModel):
+    """Ответ на создание сессии для Telegram-авторизации"""
+
+    session_token: str = Field(..., description="Токен сессии")
+    auth_url: str = Field(..., description="URL для редиректа пользователя")
+
+
+class ProfileInfo(BaseModel):
+    """Профиль пользователя (из SSO GET/PATCH profiles/{user_id})."""
+
+    user_id: int = Field(..., description="ID пользователя (Telegram id)")
+    lang: str = Field("EN", description="Язык RU/EN")
+    gender: Optional[str] = Field(None, description="Пол")
+    email: Optional[str] = Field(None, description="Email")
+    notify_telegram: bool = Field(True, description="Уведомления в Telegram")
+    notify_email: bool = Field(False, description="Уведомления по email")
+    name: Optional[str] = Field(None, description="Имя")
+    about: Optional[str] = Field(None, description="О себе")
+    age: Optional[str] = Field(None, description="Возраст")
+    weight: Optional[float] = Field(None, description="Вес")
+    height: Optional[float] = Field(None, description="Рост")
+
+    model_config = {"extra": "ignore"}
+
+
+class TelegramUserCreate(BaseModel):
+    """Данные для создания пользователя из Telegram"""
+
+    id: int = Field(..., description="Telegram user ID")
+    tz: int = Field(3, ge=-12, le=12, description="Часовой пояс")
+    phone: Optional[str] = Field(None, max_length=32)
+    name: Optional[str] = Field(None, max_length=255)
 
 
 class ServiceInfo(BaseModel):
