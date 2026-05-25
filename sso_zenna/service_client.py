@@ -245,7 +245,7 @@ class ServiceClient(BaseClient):
     ) -> Optional[UserInfo]:
         """Создать или получить пользователя по Telegram ID (POST users/telegram)."""
         await self._ensure_token()
-        payload = {"id": id, "tz": tz}
+        payload = {"telegram_id": id, "tz": tz}
         if phone is not None:
             payload["phone"] = phone
         if name is not None:
